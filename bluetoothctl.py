@@ -1,6 +1,6 @@
+import queue
 import subprocess
 import threading
-import queue
 import time
 
 class BluetoothCtl:
@@ -13,28 +13,21 @@ class BluetoothCtl:
             text=True,
             bufsize=1
         )
-
         self._queue = queue.Queue()
-        self._stop_event = threading.Event() # Track shutdown
-        self._reader_thread = threading.Thread(target=self._reader, daemon=True)
-        self._reader_thread.start()
-
-        # Ensure the controller is ready
+        self._stop_event = threading.Event()
+        self.reader_thread = threading.Thread(target=self.reader, daemon=True)
+        self.reader_thread.start()
         self.send("power on")
 
     def get_info(self, mac: str) -> str:
         """Sends info command and gathers the result from the reader queue."""
-        self.drain_output() # Flush old data
+        self.drain_output()
         self.send(f"info {mac}")
-
-        # We need to wait long enough for the output to populate the queue
         time.sleep(0.8)
-
         lines = self.drain_output()
-        # Join lines into one big string for the regex parser
         return "\n".join(lines)
 
-    def _reader(self):
+    def reader(self):
         try:
             # Use readline to avoid blocking the whole thread on end-of-stream
             while not self._stop_event.is_set():
@@ -45,9 +38,9 @@ class BluetoothCtl:
         except Exception:
             pass
 
-    def send(self, cmd: str, delay: float = 0.1): # Increased delay slightly
+    def send(self, cmd: str, delay: float = 0.1):
         if self.proc.poll() is not None:
-            return # Process is dead
+            return
 
         try:
             self.proc.stdin.write(cmd + "\n")

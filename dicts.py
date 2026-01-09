@@ -7,6 +7,26 @@ FAVORITES = {}
 # Droid signals are extensively documented
 # https://docs.google.com/spreadsheets/d/13P_GE6tNYpGvoVUTEQvA3SQzMqpZ-SoiWaTNoJoTV9Q
 
+BEACON_PROTOCOL = {
+    "MFG_ID": 0x0183,        # Manufacturer ID
+    "DATA_LEN": 0x04,        # The length of the remaining data after the header
+    "DROID_HEADER": 0x44,    # This byte is probably a guard in addition to the beacon type, to prevent accidental triggers by unrelated beacons
+    "STATUS_FLAG": 0x81,     # 0x01 if droid is not paired with a remote, 0x81 if it is
+    "ACTIVE_FLAG": 0x01,     # Possibly a receiver-facing active flag; would allow beacons to be logically enabled/disabled without relying on radio silence
+}
+
+BEACON_TYPE = {
+    "LOCATION": 0x0A,
+    "DROID":    0x03,
+}
+
+RSSI_THRESHOLD = {
+    "NEAR": 0xBA,    # (-70 dBm): Very close, high signal
+    "MID":  0xA6,    # (-90 dBm): Small room/standard distance
+    "FAR":  0x9C,    # (-100 dBm): Large room or through light obstruction
+    "MAX":  0x8C,    # (-116 dBm): Maximum range before drop-off
+}
+
 # LOCATION BEACONS
 # - Droids that react to a location beacon will not sleep for 6 hours
 # - The first element in each tuple tells the droid which audio group to play from
@@ -15,15 +35,15 @@ FAVORITES = {}
 # - Droids have a minimum cooldown of 60 seconds between location beacon reactions, 0xFF may be an override
 # - Locations mapped: https://galaxysedgetech.epizy.com
 LOCATIONS = {
-    "1": (0x01, "Ronto Roasters", 0x02), # Also emits near other food vendors in ther marketplace
-    "2": (0x02, "Oil Baths", 0x02), # Also called the droid playground; the group of droids behind the depot
-    "3": (0x03, "Resistance Base", 0x02),
-    "4": (0x04, "Unknown", 0x02), # Droids react to this locarion, but it has not been discovered anywhere yet
-    "5": (0x05, "Droid Depot", 0x02), # Also emits in front of the marketplace
-    "6": (0x06, "Den of Antiquities", 0x02),
-    "7": (0x07, "First Order Base", 0x02),
-    "8": (0x05, "Oga's Droid Detector", 0xFF),
-    "9": (0x07, "First Order Alert", 0xFF)
+    1: (0x01, "Ronto Roasters", 0x02), # Also emits near other food vendors in ther marketplace
+    2: (0x02, "Oil Baths", 0x02), # Also called the droid playground; the group of droids behind the depot
+    3: (0x03, "Resistance Base", 0x02),
+    4: (0x04, "Unknown", 0x02), # Droids react to this locarion, but it has not been discovered anywhere yet
+    5: (0x05, "Droid Depot", 0x02), # Also emits in front of the marketplace
+    6: (0x06, "Den of Antiquities", 0x02),
+    7: (0x07, "First Order Base", 0x02),
+    8: (0x05, "Oga's Droid Detector", 0xFF),
+    9: (0x07, "First Order Alert", 0xFF)
 }
 
 # DROID PERSONALITIES
@@ -115,33 +135,6 @@ COMMANDS = {
     "BB_STOP":         [0x2B, 0x42, 0x0F, 0x48, 0x44, 0x05, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]
 }
 
-# DROID SCRIPTS
-# - Likely used for the dance routines in the mobile droid depot app
-SCRIPTS = {
-    # --- R-SERIES SCRIPTS ---
-    "R2_DANCE_1":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x01], # Center head, play sound from G4, rotate R/L, center head
-    "R2_DANCE_2":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x02], # Center head, play sound from G3, complex turns, audio 7
-    "R2_DANCE_3":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x03], # Center head, play sound from G2, rotate R/L, wait (0x0D)
-    "R2_DANCE_4":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x04], # Center head, play sound from G0, series of pivot turns
-    "R2_DANCE_5":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x05], # play sound from G1, rhythmic pivot pulses
-    "R2_DANCE_6":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x06], # play sound from G6, long dance with multiple wait states
-    "R2_DANCE_7":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x07], # play sound from G5, forward/back oscillating pivots
-    "R2_DANCE_8":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x08], # play sound from G7, head rotations only (Stationary)
-
-    # --- BB-SERIES SCRIPTS ---
-    "BB_DANCE_1":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x09], # Holonomic sphere roll sequences (Audio G4)
-    "BB_DANCE_2":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x0A], # Sphere wobble and roll (Audio G3)
-    "BB_DANCE_3":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x0B], # Short roll sequence (Audio G2)
-    "BB_DANCE_4":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x0C], # High speed pivots (Audio G0)
-    "BB_DANCE_5":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x0D], # Figure-eight style rolls (Audio G1)
-    "BB_DANCE_6":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x0E], # Short audio 6, roll and stop
-    "BB_DANCE_7":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x0F], # Complex roll sequence (Audio G5)
-    "BB_DANCE_8":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x10], # Long dance with wait (0x0D) commands (Audio G7)
-
-    # --- MISC/DEVELOPMENT ---
-    "DEBUG_ROLL":    [0x27, 0x42, 0x0C, 0x44, 0x44, 0x13], # Script 19: Raw motor forward (May not stop)
-}
-
 # DROID AUDIO GROUPS
 # - Named for the park locations where the audio is typically heard naturally
 # - Audio clips are stacked sequentially within these groups
@@ -160,4 +153,48 @@ AUDIO_GROUPS = {
     9: "Empty",
     10: "Accessory: Blaster",
     11: "Accessory: Thruster"
+}
+
+# UI STRINGS
+UI_STRINGS = {
+    "LIST_ITEM": "[{idx}] {label}\n    MAC: {mac}",
+    "PROMPT": "\nSelect > ",
+    "NICKNAME": "\nEnter nickname for {target_mac}: ",
+    "UNKNOWN": "Unknown Droid",
+    "ADDED": "[*] Added to Favorites.",
+    "INVALID": "!! Invalid Selection.",
+    
+    "SCAN_HEADER": "--- DROID SCANNER ---",
+    "SCAN_MSG": "\nScanning for Droids...\n",
+    "SCAN_NONE": "No Droids found. Try 'R' to Rescan.",
+    "SCAN_FOOTER": "[R] Rescan | [N#] Nickname | [S#] Save | [C#] Connect | [Q] Back",
+    
+    "FAVORITES_HEADER": "--- KNOWN DROIDS ---",
+    "FAVORITES_EMPTY": "\nNo droids saved yet.",
+    "FAVORITES_DELETE": "Remove {name}? (y/n): ",
+    "FAVORITES_DELCONF": "[*] {name} removed.",
+    "FAVORITES_FOOTER": "\n[B] Back | [#] Connect | [D#] Delete",
+    
+    "BEACON_HEADER_MAIN": "--- DROID BEACON CONTROL ---",
+    "BEACON_STATUS": "Active: {status}",
+    "BEACON_DEBUG": "Payload: {payload}",
+    "BEACON_MAIN_OP1": "\n1. Location Beacons",
+    "BEACON_MAIN_OP2": "{index}. {faction} Droids",
+    "BEACON_FOOTER_SUB": "\n [S] Stop Advertising | [B] Back",
+    "BEACON_FOOTER_MAIN": "\n [S] Stop Advertising | [Q] Back to Main Menu",
+    
+    "CONN_CONNECTING": "[*] Connecting to {name}...",
+    "CONN_FAILED": "!! Failed to connect.",
+    "CONN_LOST": "\n[!] Connection lost. Returning to menu...",
+    "CONN_HEADER_ACTIVE": "--- CONNECTED TO {name} ---",
+    "CONN_STATUS_BAR": "ADDRESS: {mac}",
+    "CONN_MAIN_MENU": "[A] Audio Menu\n[S] Script Menu\n[Q] Disconnect",
+    
+    "AUDIO_HEADER": "--- AUDIO CONTROL ---",
+    "AUDIO_FOOTER": "\n[G#C#] Play (e.g., G1C2) | [B] Back",
+    
+    "SCRIPT_HEADER": "--- SCRIPT RUNNER ---",
+    "SCRIPT_LIST": "Select a script number (1 - 18)",
+    "SCRIPT_EXEC": "[*] Executing Script {id}...",
+    "SCRIPT_FOOTER": "\n[#] Run Script | [B] Back"
 }
