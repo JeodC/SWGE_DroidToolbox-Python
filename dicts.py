@@ -1,7 +1,9 @@
-# This file contains all the constants for droids
+#!/usr/bin/env python3
+"""
+dicts.py - Constants
+"""
 
-# Favorites dict -- it's populated when starting the application
-# by reading the .names file which is in turn built in scan.py
+# Favorites dict -- populated when starting the application
 FAVORITES = {}
 
 # Droid signals are extensively documented
@@ -35,10 +37,10 @@ RSSI_THRESHOLD = {
 # - Droids have a minimum cooldown of 60 seconds between location beacon reactions, 0xFF may be an override
 # - Locations mapped: https://galaxysedgetech.epizy.com
 LOCATIONS = {
-    1: (0x01, "Ronto Roasters", 0x02), # Also emits near other food vendors in ther marketplace
+    1: (0x01, "Ronto Roasters", 0x02), # Also emits near other food vendors in the marketplace
     2: (0x02, "Oil Baths", 0x02), # Also called the droid playground; the group of droids behind the depot
     3: (0x03, "Resistance Base", 0x02),
-    4: (0x04, "Unknown", 0x02), # Droids react to this locarion, but it has not been discovered anywhere yet
+    4: (0x04, "Unknown", 0x02), # Droids react to this location, but it has not been discovered anywhere yet
     5: (0x05, "Droid Depot", 0x02), # Also emits in front of the marketplace
     6: (0x06, "Den of Antiquities", 0x02),
     7: (0x07, "First Order Base", 0x02),
@@ -138,66 +140,84 @@ COMMANDS = {
 # DROID AUDIO GROUPS
 # - Named for the park locations where the audio is typically heard naturally
 # - Audio clips are stacked sequentially within these groups
-# - Clip 0 plays a random clip from group
 # - Clips range from 1-7
 AUDIO_GROUPS = {
-    0: "Random",
-    1: "Droid Depot",
-    2: "Resistance",
-    3: "Unknown",
-    4: "Droid Detector",
-    5: "Dok-Ondar's",
-    6: "First Order",
-    7: "Activation",
-    8: "Motor / Internal",
-    9: "Empty",
-    10: "Accessory: Blaster",
-    11: "Accessory: Thruster"
+    1: "Marketplace",
+    2: "Droid Depot",
+    3: "Resistance",
+    4: "Unknown",
+    5: "Droid Detector",
+    6: "Dok-Ondar's",
+    7: "First Order",
+    8: "Activation",
+    9: "Motor / Internal",
+    10: "Empty",
+    11: "Accessory: Blaster",
+    12: "Accessory: Thruster"
 }
 
 # UI STRINGS
 # - These will eventually be loaded from language json files
 # - Easy translation
 UI_STRINGS = {
-    "LIST_ITEM": "[{idx}] {label}\n    MAC: {mac}",
-    "PROMPT": "\nSelect > ",
-    "NICKNAME": "\nEnter nickname for {target_mac}: ",
+    "LIST_ITEM": "[{idx}] {label} MAC: {mac}",
     "UNKNOWN": "Unknown Droid",
-    "ADDED": "[*] Added to Favorites.",
-    "INVALID": "!! Invalid Selection.",
+    "ADDED": "[*] Added to Favorites",
+    "INVALID": "Invalid Selection",
+    
+    "MAIN_HEADER": " --- DROID TOOLBOX ---",
+    "MAIN_FOOTER": "Choose an option",
+    "MAIN_SCAN": "Scan for droids",
+    "MAIN_BEACON": "Emit a beacon",
+    "MAIN_CONNECT": "Connect to a droid",
     
     "SCAN_HEADER": "--- DROID SCANNER ---",
-    "SCAN_MSG": "\nScanning for Droids...\n",
-    "SCAN_NONE": "No Droids found. Try 'R' to Rescan.",
-    "SCAN_FOOTER": "[R] Rescan | [N#] Nickname | [S#] Save | [C#] Connect | [Q] Back",
+    "SCAN_FOOTER": "Found droids.",
+    "SCAN_MSG": "Scanning for Droids...",
+    "SCAN_NONE": "No Droids found",
+    "SCAN_PROMPT": "Select a Droid",
     
     "FAVORITES_HEADER": "--- KNOWN DROIDS ---",
-    "FAVORITES_EMPTY": "\nNo droids saved yet.",
-    "FAVORITES_DELETE": "Remove {name}? (y/n): ",
-    "FAVORITES_DELCONF": "[*] {name} removed.",
-    "FAVORITES_ERROR": "Error: Droid not found in favorites.",
-    "FAVORITES_FOOTER": "\n[B] Back | [#] Connect | [D#] Delete",
+    "FAVORITES_EMPTY": "No droids saved yet",
+    "FAVORITES_PROMPT": "Select a Favorite",
+    "FAVORITES_DELCONF": "[*] {name} removed",
     
     "BEACON_HEADER_MAIN": "--- DROID BEACON CONTROL ---",
-    "BEACON_STATUS": "Active: {status}",
-    "BEACON_DEBUG": "Payload: {payload}",
-    "BEACON_MAIN_OP1": "\n1. Location Beacons",
-    "BEACON_MAIN_OP2": "{index}. {faction} Droids",
-    "BEACON_FOOTER_SUB": "\n [S] Stop Advertising | [B] Back",
-    "BEACON_FOOTER_MAIN": "\n [S] Stop Advertising | [Q] Back to Main Menu",
+    "BEACON_HEADER_LOCATIONS": "--- LOCATION BEACONS ---",
+    "BEACON_HEADER_DROIDS": "--- {faction} DROIDS ---",
+    "BEACON_FOOTER": "Active: {status}",
     
     "CONN_CONNECTING": "[*] Connecting to {name}...",
-    "CONN_FAILED": "!! Failed to connect.",
-    "CONN_LOST": "\n[!] Connection lost. Returning to menu...",
-    "CONN_HEADER_ACTIVE": "--- CONNECTED TO {name} ---",
-    "CONN_STATUS_BAR": "ADDRESS: {mac}",
-    "CONN_MAIN_MENU": "[A] Audio Menu\n[S] Script Menu\n[Q] Disconnect",
+    "CONN_FAILED": "Failed to connect",
+    "CONN_LOST": "Connection lost. Returning to menu...",
+    "CONN_DISCONNECTED": "Disconnected...",
+    
+    "CONNECTED_HEADER": "--- CONNECTED TO: {name} ---",
+    "CONNECTED_PLAY_AUDIO": "Play Audio",
+    "CONNECTED_RUN_SCRIPT": "Run Script",
+    "CONNECTED_REMOTE_CONTROL": "Remote Control",
+    "CONNECTED_DISCONNECT": "Disconnect",
+    "CONNECTED_FOOTER": "Choose an option",
     
     "AUDIO_HEADER": "--- AUDIO CONTROL ---",
-    "AUDIO_FOOTER": "\n[G#C#] Play (e.g., G1C2) | [B] Back",
+    "AUDIO_FOOTER1": "Select an audio group",
+    "AUDIO_FOOTER2": "Select an audio clip",
     
-    "SCRIPT_HEADER": "--- SCRIPT RUNNER ---",
-    "SCRIPT_LIST": "Select a script number (1 - 18)",
-    "SCRIPT_EXEC": "[*] Executing Script {id}...",
-    "SCRIPT_FOOTER": "\n[#] Run Script | [B] Back"
+    "SCRIPTS_HEADER": "--- SCRIPT CONTROL ---",
+    "SCRIPTS_FOOTER": "Select a script number (1 - 18)",
+    
+    "REMOTE_HEADER": "--- REMOTE CONTROL ---",
+    "REMOTE_FOOTER": "Remote controls not implemented",
+}
+
+# BUTTON CONFIGURATIONS
+# See input.py for hardcoded color->button maps
+UI_BUTTONS = {
+    "SELECT": {"label": "Select",       "color": "a"},
+    "BACK":   {"label": "Back",         "color": "b"},
+    "STOP":   {"label": "Stop",         "color": "x"},
+    "DELETE": {"label": "Delete",       "color": "x"},
+    "FAV":    {"label": "Favorite",     "color": "y"},
+    "EXIT":   {"label": "Exit",         "color": "b"},
+    "CONN":   {"label": "Connect",      "color": "a"},
 }

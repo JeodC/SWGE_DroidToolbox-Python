@@ -1,20 +1,32 @@
-from dicts import BEACON_PROTOCOL, BEACON_TYPE, RSSI_THRESHOLD, FACTIONS
+import threading
+import time
 
+from dicts import BEACON_PROTOCOL, BEACON_TYPE, RSSI_THRESHOLD, FACTIONS, LOCATIONS, DROIDS
+
+# ----------------------------------------------------------------------
+# Droid Beacon (Low Level)
+# ----------------------------------------------------------------------
 class DroidBeacon:
     def __init__(self, bt_controller):
         self.bt = bt_controller
         self.current_active = "None"
         self.debug_payload = ""
+        self.thread = None
+        self.stop_event = threading.Event()
+        self._lock = threading.Lock()
 
     def _send_payload(self, name, payload):
-        """Formats and broadcasts the raw hex payload."""
-        raw = payload.replace("0x", "").replace(" ", "")
+        raw = payload.replace("0x", "").replace(" ", "").replace(",", "")
         mfg_id = f"0x{raw[:4]}"
         mfg_data = " ".join(f"0x{raw[i:i+2]}" for i in range(4, len(raw), 2))
 
-        self.bt.broadcast_mfg(mfg_id, mfg_data)
-        self.current_active = name
-        self.debug_payload = f"{mfg_id} {mfg_data}"
+        with self._lock:
+            try:
+                self.bt.broadcast_mfg(mfg_id, mfg_data)
+                self.current_active = name
+                self.debug_payload = f"{mfg_id} {mfg_data}"
+            except Exception:
+                pass
 
     def activate_location(self, loc_id, name, cooldown_byte):
         payload = (
@@ -29,7 +41,7 @@ class DroidBeacon:
         self._send_payload(name, payload)
 
     def activate_droid(self, p_id, p_name, faction_name):
-        aff_id = FACTIONS[faction_name]
+        aff_id = FACTIONS.get(faction_name, 0x01)
         aff_byte = 0x80 + (aff_id * 2)
         payload = (
             f"0x{BEACON_PROTOCOL['MFG_ID']:04X} "
@@ -40,9 +52,81 @@ class DroidBeacon:
             f"0x{aff_byte:02X} "
             f"0x{p_id:02X}"
         )
-        self._send_payload(f"{faction_name}: {p_name}", payload)
+        self._send_payload(p_name, payload)
 
     def stop(self):
-        self.bt.stop_advertising()
-        self.current_active = "None (Stopped)"
-        self.debug_payload = ""
+        self.stop_event.set()
+        with self._lock:
+            try:
+                self.bt.stop_advertising()
+            except Exception:
+                pass
+            self.current_active = "None"
+            self.debug_payload = ""
+        
+    def start_loop(self, target_type, target_id, faction=None, **kwargs):
+        if self.thread and self.thread.is_alive():
+            self.stop_event.set()
+            self.thread.join(timeout=0.2)
+
+        self.stop_event.clear()
+
+        def loop():
+            while not self.stop_event.is_set():
+                try:
+                    wait_time = 1.5
+                    
+                    if target_type == "location":
+                        data = LOCATIONS.get(target_id)
+                        if data:
+                            self.activate_location(target_id, data[1], data[2])
+                            wait_time = max(1.0, data[2] * 5)
+                    elif target_type == "droid":
+                        f_data = DROIDS.get(faction, {})
+                        d_data = f_data.get(target_id)
+                        if d_data:
+                            self.activate_droid(d_data["id"], d_data["name"], faction)
+                            wait_time = 2.0
+                    
+                    end_sleep = time.time() + wait_time
+                    while time.time() < end_sleep and not self.stop_event.is_set():
+                        time.sleep(0.1)
+                except Exception:
+                    time.sleep(1.0)
+
+        self.thread = threading.Thread(target=loop, daemon=True)
+        self.thread.start()
+
+# ----------------------------------------------------------------------
+# Beacon Manager (High Level)
+# ----------------------------------------------------------------------
+class BeaconManager:
+    def __init__(self, bt_controller):
+        self.bt = bt_controller
+        self.droid_beacon = DroidBeacon(self.bt)
+        self.thread = None
+
+    def start_location(self, loc_id, name):
+        self._run(target_type="location", target_id=loc_id)
+
+    def start_droid(self, faction, droid_id, name):
+        self._run(target_type="droid", target_id=droid_id, faction=faction)
+
+    def _run(self, **kwargs):
+        self.stop()
+        self.thread = threading.Thread(
+            target=self.droid_beacon.start_loop,
+            kwargs=kwargs,
+            name="BeaconLoopThread",
+            daemon=True
+        )
+        self.thread.start()
+
+    def stop(self):
+        self.droid_beacon.stop()
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=0.1)
+
+    @property
+    def current_active(self):
+        return self.droid_beacon.current_active

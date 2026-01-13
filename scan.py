@@ -1,15 +1,24 @@
+#!/usr/bin/env python3
+"""
+scan.py - Performs the logic in scan actions
+"""
+
 import os
 import re
 import subprocess
 import time
+import threading
+from itertools import cycle
 
 from dicts import FACTIONS, DROIDS
 
+# ----------------------------------------------------------------------
+# DroidScanner (Low Level)
+# ----------------------------------------------------------------------
 class DroidScanner:
     def __init__(self, bt_controller):
         self.bt = bt_controller
         self.base_dir = os.path.dirname(os.path.realpath(__file__))
-        self._namefile = os.path.join(self.base_dir, ".names")
 
     def _get_raw_devices(self):
         """Directly queries the OS for visible Bluetooth devices"""
@@ -42,23 +51,6 @@ class DroidScanner:
             return "Parse Error"
         return None
 
-    def _load_names(self):
-        """Reads the .names file into a dict"""
-        names = {}
-        if os.path.exists(self._namefile):
-            with open(self._namefile, "r") as f:
-                for line in f:
-                    if "|" in line:
-                        mac, name = line.strip().split("|", 1)
-                        names[mac.upper()] = name
-        return names
-        
-    def _save_all_names(self, name_dict):
-        """Syncs the FAVORITES dict with the .names file"""
-        with open(self._namefile, "w") as f:
-            for m, n in name_dict.items():
-                f.write(f"{m}|{n}\n")
-
     def scan_for_droids(self):
         """Returns a list of MAC addresses identified as 'DROID'"""
         raw_output = self._get_raw_devices()
@@ -69,24 +61,91 @@ class DroidScanner:
         info_text = self.bt.get_info(mac)
         return self._parse_personality(info_text)
 
-    def get_saved_name(self, mac):
-        """Returns the user-defined name for a MAC if it exists"""
-        names = self._load_names()
-        return names.get(mac.upper())
 
-    def save_custom_name(self, mac, name):
-        """Saves/Updates a custom name for a MAC"""
-        names = self._load_names()
-        names[mac.upper()] = name
-        self._save_all_names(names)
-                
-    def delete_saved_name(self, mac):
-        """Removes a droid from the saved names file"""
-        names = self._load_names()
-        mac_upper = mac.upper()
+# ----------------------------------------------------------------------
+# Scan Manager (High Level)
+# ----------------------------------------------------------------------
+class ScanManager:
+    def __init__(self, bt_controller, lock=None, favorites=None, progress_callback=None):
+        self.bt = bt_controller
+        self.scanner = DroidScanner(bt_controller)
+        self._lock = lock or threading.Lock()
+        self.favorites = favorites or {}
+        self.scanning = False
+        self.scan_results = []
+        self.last_error = None
+        self.progress_callback = progress_callback
+
+    def _update_progress(self, msg):
+        if self.progress_callback:
+            self.progress_callback(msg)
+
+    def start_scan(self, duration=2.0):
+        if self.scanning:
+            return
         
-        if mac_upper in names:
-            del names[mac_upper]
-            self._save_all_names(names) 
-            return True
-        return False
+        self.scanning = True
+        self.last_error = None
+        threading.Thread(target=self._scan_thread, args=(duration,), daemon=True, name="ScanningThread").start()
+        
+    def stop_scan(self):
+        if self.scanning:
+            try:
+                self.bt.stop_scanning()
+            except Exception:
+                pass
+            self.scanning = False
+
+    def _scan_thread(self, duration):
+        try:
+            # Start fresh
+            with self._lock:
+                self.scan_results = []
+            
+            self.bt.power_on()
+            
+            self.bt.start_scanning()
+            
+            # Collect raw device list during the sleep
+            time.sleep(duration)
+            
+            self.bt.stop_scanning()
+            time.sleep(0.1) 
+
+            found_macs = self.scanner.scan_for_droids()
+            
+            if not found_macs:
+                return
+
+            # Identify droids one-by-one and update UI live
+            for mac in found_macs:
+                mac = mac.upper()
+                
+                identity = self.scanner.get_droid_identity(mac)
+                nickname = self.favorites.get(mac)
+                
+                new_droid = {
+                    "mac": mac, 
+                    "nickname": nickname, 
+                    "identity": identity or "Droid Found"
+                }
+
+                # Push to the UI list immediately so the user sees progress
+                with self._lock:
+                    self.scan_results.append(new_droid)
+
+        except Exception as e:
+            self.last_error = str(e)
+            print(f"Scan Break: {e}")
+        finally:
+            self.scanning = False
+
+    def get_results(self):
+        with self._lock:
+            return self.scan_results.copy()
+            
+    def clear_results(self):
+        """Clear previous scan results."""
+        with self._lock:
+            self.scan_results = []
+            self.last_error = None

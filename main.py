@@ -1,56 +1,102 @@
+#!/usr/bin/env python3
+"""
+main.py - Entrypoint for Droid Toolbox
+"""
+
+import glob
 import os
-import shutil
 import sys
 
-from bluetoothctl import BluetoothCtl
-from ui import DroidUI
+# Add dependencies to path
+BASE_PATH = os.path.dirname(os.path.abspath(__file__))
+LIBS_PATH = os.path.join(BASE_PATH, "deps")
+sys.path.insert(0, LIBS_PATH)
 
-# --- PATH SETUP ---
-script_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(script_dir, "deps"))
+import sdl2
 
-def main():
-    # Check for system dependencies
-    if shutil.which("bluetoothctl") is None:
-        print("ERROR: bluetoothctl not found. This program requires Linux with BlueZ.")
-        return
+# Global log file descriptor
+_log_fd = None
 
-    # Initialize Hardware Controller
+# ----------------------------------------------------------------------
+# Logging setup
+# ----------------------------------------------------------------------
+def initialise_logging() -> None:
+    global _log_fd
+    log_dir = os.path.join(BASE_PATH, "logs")
+    os.makedirs(log_dir, exist_ok=True)
+
+    # Delete oldest logs if more than 10 exist
+    log_files = sorted(glob.glob(os.path.join(log_dir, "*.txt")), key=os.path.getmtime)
+    while len(log_files) >= 10:
+        os.remove(log_files[0])
+        log_files.pop(0)
+
+    log_file = os.environ.get("LOG_FILE", os.path.join(log_dir, "log.txt"))
     try:
-        bt = BluetoothCtl()
+        _log_fd = open(log_file, "w", buffering=1)
+        sys.stdout = sys.stderr = _log_fd
     except Exception as e:
-        print(f"ERROR: Failed to initialize BluetoothCtl: {e}")
-        return
+        print(f"Failed to open log file {log_file}: {e}", file=sys.__stdout__)
+        _log_fd = sys.__stdout__
 
-    # Initialize the UI (This class handles Beacon and Scanner internally)
-    interface = DroidUI(bt)
+# ----------------------------------------------------------------------
+# Cleanup helper
+# ----------------------------------------------------------------------
+def cleanup(toolbox, exit_code: int) -> None:
+    if toolbox:
+        try:
+            toolbox.cleanup()
+        except Exception as e:
+            print(f"Toolbox cleanup error: {e}", file=sys.__stdout__)
 
-    # Main Program Loop
+    if _log_fd and not getattr(_log_fd, "closed", True):
+        try:
+            _log_fd.flush()
+            _log_fd.close()
+        except Exception:
+            pass
+
+    sdl2.SDL_Quit()
+    sys.exit(exit_code)
+
+# ----------------------------------------------------------------------
+# Main entry point
+# ----------------------------------------------------------------------
+def main() -> None:
+    from toolbox import DroidToolbox
+
+    initialise_logging()
+
+    # SDL initialization
+    if sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO | sdl2.SDL_INIT_GAMECONTROLLER) < 0:
+        print(f"SDL2 init failed: {sdl2.SDL_GetError()}")
+        sys.exit(1)
+        
+    toolbox = None
     try:
-        while True:
-            interface.clear()
-            print("--- DROID TOOLBOX MAIN MENU ---")
-            print("\n1. Droid Scan")
-            print("2. Emit Beacon")
-            print("3. Saved Droids")
-            print("Q. Quit")
-            
-            choice = input("\nSelect > ").upper()
-            
-            if choice == '1':
-                interface.scanning_menu()
-            elif choice == '2':
-                interface.beacon_main_menu()
-            elif choice == '3':
-                interface.favorites_menu()
-            elif choice == 'Q':
-                break
+        toolbox = DroidToolbox()
+        toolbox.start()
+
+        while toolbox.running:
+            toolbox.ui.draw_start()
+            toolbox.update()
+            toolbox.ui.render_to_screen()
+            toolbox.input.clear_ui_states()
+            sdl2.SDL_Delay(16)
+
+    except KeyboardInterrupt:
+        print("\nInterrupted by user.")
+        cleanup(toolbox, 0)
     except Exception as e:
-        print(f"FATAL ERROR: {e}")
+        print(f"Unhandled exception: {e}")
+        cleanup(toolbox, 1)
+    else:
+        print("Exiting Droid Toolbox...")
+        cleanup(toolbox, 0)
     finally:
-        # Ensure we stop any active advertising and close the socket
-        bt.stop_advertising()
-        bt.close()
+        if toolbox is None and sdl2.SDL_WasInit(0):
+            sdl2.SDL_Quit()
+
 
 if __name__ == "__main__":
     main()
