@@ -25,30 +25,46 @@ class DroidScanner:
         return subprocess.run(["bluetoothctl", "devices"], capture_output=True, text=True).stdout
 
     def _parse_personality(self, info_text):
-        """Uses regex to extract and decode personality hex from manufacturer data"""
-        if "ManufacturerData.Value" not in info_text:
+        """Parses hex code to determine the personality and faction of a droid"""
+        if not info_text or "ManufacturerData.Value" not in info_text:
             return None
         try:
-            parts = info_text.split("ManufacturerData.Value:")[1].split("AdvertisingFlags:")[0]
+            parts = info_text.split("ManufacturerData.Value:")[1]
+            
+            if "AdvertisingFlags" in parts:
+                parts = parts.split("AdvertisingFlags:")[0]
+            elif "RSSI" in parts:
+                parts = parts.split("RSSI:")[0]
+
             clean_hex = "".join(re.findall(r'[0-9a-fA-F]+', parts)).lower()
 
             if "0304" in clean_hex:
                 start = clean_hex.find("0304")
                 payload = clean_hex[start:start+12]
+
                 if len(payload) == 12:
                     raw_aff_byte = int(payload[8:10], 16)
                     raw_pers_val = int(payload[10:12], 16)
                     derived_aff_id = (raw_aff_byte - 0x80) // 2
 
-                    # Match against dicts.py
+                    chip_name = "Droid"
+                    faction_label = ""
+
                     for f_label, droids_dict in DROIDS.items():
                         if FACTIONS.get(f_label) == derived_aff_id:
+                            faction_label = f_label.capitalize()
                             for d_info in droids_dict.values():
                                 if d_info["id"] == raw_pers_val:
-                                    return f"{f_label} | {d_info['name']}"
-                    return f"Unknown Faction ({derived_aff_id}) | Unknown ID ({raw_pers_val})"
-        except:
-            return "Parse Error"
+                                    chip_name = d_info["name"]
+                                    break
+                            break
+                    
+                    if faction_label:
+                        return f"{chip_name} ({faction_label})"
+                    return chip_name
+        except Exception as e:
+            print(f"DEBUG: Parse Error -> {e}")
+            return None
         return None
 
     def scan_for_droids(self):
@@ -77,10 +93,12 @@ class ScanManager:
         self.progress_callback = progress_callback
 
     def _update_progress(self, msg):
+        """Triggers the UI callback to update the user on scan status"""
         if self.progress_callback:
             self.progress_callback(msg)
 
     def start_scan(self, duration=2.0):
+        """Initiates the background thread to perform a non-blocking device scan"""
         if self.scanning:
             return
         
@@ -89,6 +107,7 @@ class ScanManager:
         threading.Thread(target=self._scan_thread, args=(duration,), daemon=True, name="ScanningThread").start()
         
     def stop_scan(self):
+        """Signals the Bluetooth controller to cease discovery and updates state"""
         if self.scanning:
             try:
                 self.bt.stop_scanning()
@@ -98,54 +117,48 @@ class ScanManager:
 
     def _scan_thread(self, duration):
         try:
-            # Start fresh
             with self._lock:
                 self.scan_results = []
             
-            self.bt.power_on()
-            
+            self.bt.power_on()  
             self.bt.start_scanning()
-            
-            # Collect raw device list during the sleep
             time.sleep(duration)
-            
             self.bt.stop_scanning()
-            time.sleep(0.1) 
+            
+            # Increase this to allow the OS to process the final scan results
+            time.sleep(0.5) 
 
             found_macs = self.scanner.scan_for_droids()
             
-            if not found_macs:
-                return
-
-            # Identify droids one-by-one and update UI live
             for mac in found_macs:
                 mac = mac.upper()
                 
+                # Give the info command two chances to find the ManufacturerData
                 identity = self.scanner.get_droid_identity(mac)
+                if not identity:
+                    time.sleep(0.2)
+                    identity = self.scanner.get_droid_identity(mac)
+                
                 nickname = self.favorites.get(mac)
                 
                 new_droid = {
                     "mac": mac, 
                     "nickname": nickname, 
-                    "identity": identity or "Droid Found"
+                    "identity": identity if identity else "Droid Found"
                 }
 
-                # Push to the UI list immediately so the user sees progress
                 with self._lock:
                     self.scan_results.append(new_droid)
-
-        except Exception as e:
-            self.last_error = str(e)
-            print(f"Scan Break: {e}")
         finally:
             self.scanning = False
 
     def get_results(self):
+        """Provides a thread-safe copy of the currently discovered droid list"""
         with self._lock:
             return self.scan_results.copy()
             
     def clear_results(self):
-        """Clear previous scan results."""
+        """Resets the result list and error tracking for a new scan session"""
         with self._lock:
             self.scan_results = []
             self.last_error = None

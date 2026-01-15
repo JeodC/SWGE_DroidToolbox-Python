@@ -50,7 +50,7 @@ class DroidToolbox:
             self.bt, lock=self._lock, favorites=self.favorites, progress_callback=self._show_progress
         )
         self.beacon_mgr = BeaconManager(self.bt)
-        self.conn_mgr = ConnectionManager(self.bt)
+        self.conn_mgr = ConnectionManager()
 
         # Menu Map
         self.view_map = {
@@ -190,6 +190,8 @@ class DroidToolbox:
         self.last_progress_time = time.time()
 
     def _render_menu_list(self, items: list, current_idx: int, start_y: int = 60, scroll_limit: int = 12, show_details: bool = True):
+        if not items: return 0
+        current_idx = max(0, min(current_idx, len(items) - 1))
         start_view = max(0, current_idx - (scroll_limit - 1))
         
         for i, item in enumerate(items[start_view:start_view + scroll_limit]):
@@ -198,14 +200,14 @@ class DroidToolbox:
             y_pos = start_y + i * 30
             
             if isinstance(item, dict):
-                label = item.get("nickname") or item.get("identity") or UI_STRINGS["UNKNOWN"]
-                sub_label = item.get("mac", "") if show_details else None
+                mac = item.get("mac", "").upper()
+                # Prioritize saved nickname, then the parsed identity from get_droid_identity
+                display_name = item.get("nickname") or item.get("identity") or "Droid"
+                label = f"{display_name} - {mac}" if show_details else display_name
             elif isinstance(item, tuple):
-                label = item[1]
-                sub_label = item[0] if show_details else None
+                label = f"{item[1]} - {item[0].upper()}" if show_details else item[1]
             else:
                 label = str(item)
-                sub_label = None
 
             self.ui.row_list(
                 label, 
@@ -216,17 +218,32 @@ class DroidToolbox:
                 color=self.ui.c_text if sel else self.ui.c_menu_bg
             )
             
-            if sub_label:
-                self.ui.draw_text((24, y_pos + 15), sub_label, color=self.ui.c_menu_bg if sel else self.ui.c_text)
-
         return start_view
+        
+    def _get_active_status(self, default_msg: str) -> str:
+        if self.last_progress_msg:
+            elapsed = time.time() - self.last_progress_time
+            if elapsed < self.PROGRESS_STICKY_SECONDS:
+                if self.conn_mgr.is_connecting:
+                    self.ui.spin()
+                    return f"{self.last_progress_msg} {self.ui.spinner_frame}"
+                return self.last_progress_msg
+            else:
+                self.last_progress_msg = None
+
+        if self.scan_mgr.scanning:
+            self.ui.spin()
+            return f"{default_msg} {self.ui.spinner_frame}"
+
+        return default_msg
 
     # ----------------------------------------------------------------------
     # Main Menu
     # ----------------------------------------------------------------------
     def _render_main(self):
         self.ui.draw_header(UI_STRINGS["MAIN_HEADER"])
-        self.ui.draw_status_footer(UI_STRINGS["MAIN_FOOTER"])
+        status = self._get_active_status(UI_STRINGS["MAIN_FOOTER"])
+        self.ui.draw_status_footer(status)
         menu_items = [UI_STRINGS["MAIN_SCAN"], UI_STRINGS["MAIN_BEACON"], UI_STRINGS["MAIN_CONNECT"]]
         
         self._render_menu_list(menu_items, self.main_idx)
@@ -252,51 +269,48 @@ class DroidToolbox:
 
         if self.scan_mgr.scanning:
             self.ui.spin()
-            status = f"{UI_STRINGS['SCAN_MSG']} {self.ui.spinner_frame}"
+            status_msg = UI_STRINGS['SCAN_MSG']
         else:
-            status = UI_STRINGS["SCAN_PROMPT"] if items else UI_STRINGS["SCAN_NONE"]
+            status_msg = UI_STRINGS["SCAN_PROMPT"] if items else UI_STRINGS["SCAN_NONE"]
         
+        # Apply the helper here
+        status = self._get_active_status(status_msg)
         self.ui.draw_status_footer(status)
 
         if items:
             self.idx = min(self.idx, len(items) - 1)
             self._render_menu_list(items, self.idx, show_details=True)
 
-        self._set_buttons("CONN", "FAV", "BACK")
+        self._set_buttons("CONN", "FAV", "SCAN", "BACK")
         self.ui.draw_buttons()
 
     def _update_scan(self):
         items = self.scan_mgr.get_results()
-        
         if items:
             self.idx = self.input.ui_handle_navigation(self.idx, 1, len(items))
             selected = items[self.idx]
         else:
             selected = None
 
-        if self.input.ui_key("Y"):
-            mac, name = selected["mac"], (selected.get("nickname") or "Droid")
+        if self.input.ui_key("Y") and selected:
+            mac = selected["mac"]
+            name = selected.get("identity") or selected.get("nickname") or "Droid"
+            
             if mac.upper() in self.favorites:
                 self.delete_favorite(mac)
+                self._show_progress(UI_STRINGS["FAVORITES_DELCONF"])
             else:
                 self.save_favorite(mac, name)
+                self._show_progress(UI_STRINGS["FAVORITES_SAVED"])
 
-        elif self.input.ui_key("A"):
-            self.conn_mgr.connect_droid(selected["mac"], selected.get("nickname") or "Droid")
-            self._show_progress(UI_STRINGS["CONN_CONNECTING"].format(name=selected.get("nickname") or "Droid"))
+        elif self.input.ui_key("X"):
+            self.scan_mgr.start_scan()
+            self._show_progress(UI_STRINGS["SCAN_MSG"])
 
-            def _wait_for_result():
-                start_time = time.time()
-                while self.conn_mgr.is_connecting:
-                    time.sleep(0.05)
-
-                if not self.conn_mgr.is_connected:
-                    self._show_progress(UI_STRINGS["CONN_FAILED"])
-                    time.sleep(self.PROGRESS_STICKY_SECONDS)
-                else:
-                    self.scan_mgr.clear_results()
-
-            threading.Thread(target=_wait_for_result, daemon=True).start()
+        elif self.input.ui_key("A") and selected:
+            name = selected.get("nickname") or selected.get("identity") or "Droid"
+            self.conn_mgr.connect_droid(selected["mac"], name)
+            self._show_progress(UI_STRINGS["CONN_CONNECTING"].format(name=name))
 
         elif self.input.ui_key("B"):
             self._reset_to_main()
@@ -314,9 +328,14 @@ class DroidToolbox:
         else:
             faction = self.beacon_selection[0]
             items = [d["name"] for d in DROIDS[faction].values()]
+            header = UI_STRINGS["BEACON_HEADER_DROIDS"].format(faction=faction.upper())
 
-        self.ui.draw_header(UI_STRINGS["BEACON_HEADER_DROIDS"].format(faction=faction.upper()))
-        self.ui.draw_status_footer(UI_STRINGS["BEACON_FOOTER"].format(status=self.beacon_mgr.current_active))
+        self.ui.draw_header(header)
+        
+        # Apply the helper here
+        status_msg = UI_STRINGS["BEACON_FOOTER"].format(status=self.beacon_mgr.current_active)
+        status = self._get_active_status(status_msg)
+        self.ui.draw_status_footer(status)
             
         self._render_menu_list(items, self.beacon_idx)
         self._set_buttons("SELECT", "BACK", "STOP")
@@ -369,10 +388,14 @@ class DroidToolbox:
             fav_items = list(self.favorites.items())
 
         if not fav_items:
-            self.ui.draw_status_footer(UI_STRINGS["FAVORITES_EMPTY"])
+            status_msg = UI_STRINGS["FAVORITES_EMPTY"]
         else:
-            self.ui.draw_status_footer(UI_STRINGS["FAVORITES_PROMPT"])
+            status_msg = UI_STRINGS["FAVORITES_PROMPT"]
             self._render_menu_list(fav_items, self.connect_idx, show_details=False)
+
+        # Apply the priority helper
+        status = self._get_active_status(status_msg)
+        self.ui.draw_status_footer(status)
 
         self._set_buttons("CONN", "BACK", "DELETE")
         self.ui.draw_buttons()
@@ -384,16 +407,29 @@ class DroidToolbox:
 
         with self._lock:
             fav_items = list(self.favorites.items())
-        if not fav_items or self.conn_mgr.is_connecting: return
+        
+        if not fav_items or self.conn_mgr.is_connecting: 
+            return
 
         self.connect_idx = self.input.ui_handle_navigation(self.connect_idx, 1, len(fav_items))
+        
+        # Guard against index errors if the list changed
+        self.connect_idx = max(0, min(self.connect_idx, len(fav_items) - 1))
         mac, name = fav_items[self.connect_idx]
 
         if self.input.ui_key("X"):
             self.delete_favorite(mac)
-            self.ui.draw_status_footer(UI_STRINGS["FAVORITES_DELCONF"])
+            # Update index immediately so the next render doesn't crash
+            if len(fav_items) <= 1:
+                self.connect_idx = 0
+            else:
+                self.connect_idx = max(0, self.connect_idx - 1)
+                
+            self._show_progress(UI_STRINGS["FAVORITES_DELCONF"])
+            
         elif self.input.ui_key("A"):
             self.conn_mgr.connect_droid(mac, name)
+            self._show_progress(UI_STRINGS["CONN_CONNECTING"].format(name=name))
 
     # ----------------------------------------------------------------------
     # Connected Menu (Connected to Droid)
@@ -453,6 +489,7 @@ class DroidToolbox:
     # ----------------------------------------------------------------------
     def _render_audio_menu(self):
         self.ui.draw_header(UI_STRINGS["AUDIO_HEADER"])
+        
         if self.audio_group_selected is None:
             items = [f"G{k}: {v}" for k, v in AUDIO_GROUPS.items()]
             idx = self.audio_group_idx
@@ -462,11 +499,7 @@ class DroidToolbox:
             idx = self.audio_clip_idx
             self.ui.draw_status_footer(UI_STRINGS["AUDIO_FOOTER2"])
 
-        start = max(0, idx - 11)
-        for i, label in enumerate(items[start:start+12]):
-            sel = (start + i) == idx
-            self.ui.row_list(label, (20, y), self.ui.screen_width // 2, 28, sel, color=self.ui.c_text if sel else self.ui.c_menu_bg)
-                             
+        self._render_menu_list(items, idx)
         self._set_buttons("SELECT", "BACK")
         self.ui.draw_buttons()
 
@@ -487,13 +520,11 @@ class DroidToolbox:
     def _render_script_menu(self):
         self.ui.draw_header(UI_STRINGS["SCRIPTS_HEADER"])
         items = [f"Script {i + 1}" for i in range(18)]
-        start = max(0, self.script_idx - 11)
-        for i, label in enumerate(items[start:start+12]):
-            sel = (start + i) == self.script_idx
-            self.ui.row_list(label, (20, y), self.ui.screen_width // 2, 28, sel, color=self.ui.c_text if sel else self.ui.c_menu_bg)
-        self.ui.draw_buttons()
         
+        self._render_menu_list(items, self.script_idx)
         self.ui.draw_status_footer(UI_STRINGS["SCRIPTS_FOOTER"])
+        self._set_buttons("SELECT", "BACK")
+        self.ui.draw_buttons()
 
     def _update_script_menu(self):
         self.script_idx = self.input.ui_handle_navigation(self.script_idx, 1, 18)
@@ -516,7 +547,12 @@ class DroidToolbox:
         threading.Thread(target=self._monitor_input, name="InputThread", daemon=True).start()
 
     def update(self):
-        # Auto-revert logic
+        # 1. Handle Auto-Transition to Connected View
+        if self.conn_mgr.is_connected and self.current_view != "connected" and not self.submenu:
+            self.current_view = "connected"
+            self.idx = 0
+
+        # 2. Handle Auto-Revert on Connection Loss
         if (self.current_view == "connected" or self.submenu) and not self.conn_mgr.is_connected:
             self._reset_to_main(UI_STRINGS["CONN_LOST"])
 
@@ -524,7 +560,6 @@ class DroidToolbox:
             self._show_progress(self.conn_mgr.last_error)
             self.conn_mgr.last_error = None
 
-        # Determine active target: submenu takes priority over current_view
         target = self.submenu if self.submenu else self.current_view
         render, update_func = self.view_map.get(target, (None, None))
 

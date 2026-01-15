@@ -17,8 +17,7 @@ from dicts import CHARACTERISTICS, COMMANDS, AUDIO_GROUPS
 # Droid Connection (Low Level)
 # ----------------------------------------------------------------------
 class DroidConnection:
-    def __init__(self, bt_controller):
-        self.bt = bt_controller
+    def __init__(self):
         self.client = None
         self.loop = None
         self.lock = asyncio.Lock()
@@ -30,7 +29,7 @@ class DroidConnection:
         return self.client is not None and self.client.is_connected
 
     async def _write(self, data: bytearray) -> bool:
-        """Low-level GATT write with safety checks"""
+        """Low-level GATT write with safety checks and concurrency locking"""
         if not self.is_connected:
             return False
         async with self.lock:
@@ -63,7 +62,7 @@ class DroidConnection:
             return False
 
     async def send_audio(self, group: int, clip: int) -> bool:
-        """Triggers a droid audio clip"""
+        """Triggers a droid audio clip by setting the active group followed by the clip ID"""
         base = COMMANDS["AUDIO_BASE"]
         # Set Audio Group
         if await self._write(bytearray(base + [0x1f, group])):
@@ -73,7 +72,7 @@ class DroidConnection:
         return False
 
     async def run_script(self, script_id: int) -> bool:
-        """Executes a pre-defined droid animation script"""            
+        """Executes a pre-defined animation/movement script stored on the droid"""            
         packet = bytearray([0x25, 0x00, 0x0C, 0x42, script_id, 0x02])
         return await self._write(packet)
 
@@ -87,10 +86,8 @@ class DroidConnection:
 # Connection Manager (High Level)
 # ----------------------------------------------------------------------
 class ConnectionManager:
-    def __init__(self, bt_controller):
-        self.bt = bt_controller
-        self.conn = DroidConnection(bt_controller)
-        self.connected_name = None
+    def __init__(self):
+        self.conn = DroidConnection()
         self.audio_in_progress = False
         
         # New State Tracking
@@ -101,9 +98,11 @@ class ConnectionManager:
 
     @property
     def is_connected(self):
+        """Check if the droid is currently linked"""
         return self.conn.is_connected if self.conn else False
 
     def connect_droid(self, mac, name):
+        """Initiates a background thread to handle the asynchronous Bleak connection process"""
         if self.is_connecting:
             return
         
@@ -115,12 +114,12 @@ class ConnectionManager:
         threading.Thread(target=self._connect_thread, args=(mac, name), daemon=True).start()
 
     def _connect_thread(self, mac, name):
+        """Thread worker that manages the asyncio event loop required for BLE operations"""
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self.conn.loop = loop 
         
         try:
-            # Set a timeout for the actual connection attempt
             success = loop.run_until_complete(asyncio.wait_for(self.conn.connect(mac), timeout=15.0))
             
             if not success:
@@ -135,9 +134,10 @@ class ConnectionManager:
             self.last_error = f"Connection Error: {str(e)}"
         finally:
             self.is_connecting = False
-            loop.close()
+            self.conn.client = None
 
     def run_action(self, label, category):
+        """Parses UI button labels and categories to trigger corresponding Bluetooth commands"""
         if not self.is_connected or not self.conn.loop:
             return
 
@@ -156,6 +156,7 @@ class ConnectionManager:
                 asyncio.run_coroutine_threadsafe(self.conn.run_script(script_id), self.conn.loop)
 
     async def _play_audio(self, group, clip):
+        """Asynchronous wrapper to prevent multiple audio commands from overlapping"""
         try:
             self.audio_in_progress = True
             group_idx = group         
@@ -166,6 +167,7 @@ class ConnectionManager:
             self.audio_in_progress = False
 
     def disconnect_droid(self):
+        """Thread-safe request to disconnect the droid and stop the background event loop"""
         if self.is_connected and self.conn.loop and not self.conn.loop.is_closed():
             asyncio.run_coroutine_threadsafe(self.conn.disconnect(), self.conn.loop)
             self.conn.loop.call_soon_threadsafe(self.conn.loop.stop)

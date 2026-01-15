@@ -16,6 +16,7 @@ class DroidBeacon:
         self._lock = threading.Lock()
 
     def _send_payload(self, name, payload):
+        """Formats the hex string into raw manufacturer data and triggers the BT broadcast"""
         raw = payload.replace("0x", "").replace(" ", "").replace(",", "")
         mfg_id = f"0x{raw[:4]}"
         mfg_data = " ".join(f"0x{raw[i:i+2]}" for i in range(4, len(raw), 2))
@@ -29,6 +30,7 @@ class DroidBeacon:
                 pass
 
     def activate_location(self, loc_id, name, cooldown_byte):
+        """Builds the byte payload for a Location beacon"""
         payload = (
             f"0x{BEACON_PROTOCOL['MFG_ID']:04X} "
             f"0x{BEACON_TYPE['LOCATION']:02X} "
@@ -41,6 +43,7 @@ class DroidBeacon:
         self._send_payload(name, payload)
 
     def activate_droid(self, p_id, p_name, faction_name):
+        """Constructs the byte payload to simulate a specific droid's presence"""
         aff_id = FACTIONS.get(faction_name, 0x01)
         aff_byte = 0x80 + (aff_id * 2)
         payload = (
@@ -55,6 +58,7 @@ class DroidBeacon:
         self._send_payload(p_name, payload)
 
     def stop(self):
+        """Stops the advertisement and resets the beacon's internal status"""
         self.stop_event.set()
         with self._lock:
             try:
@@ -65,6 +69,7 @@ class DroidBeacon:
             self.debug_payload = ""
         
     def start_loop(self, target_type, target_id, faction=None, **kwargs):
+        """Creates a background loop that periodically refreshes the beacon broadcast"""
         if self.thread and self.thread.is_alive():
             self.stop_event.set()
             self.thread.join(timeout=0.2)
@@ -107,12 +112,15 @@ class BeaconManager:
         self.thread = None
 
     def start_location(self, loc_id, name):
+        """Interface method to begin broadcasting a specific Location ID"""
         self._run(target_type="location", target_id=loc_id)
 
     def start_droid(self, faction, droid_id, name):
+        """Interface method to begin broadcasting as a specific Droid personality"""
         self._run(target_type="droid", target_id=droid_id, faction=faction)
 
     def _run(self, **kwargs):
+        """Manages the lifecycle of the BeaconLoopThread for non-blocking execution"""
         self.stop()
         self.thread = threading.Thread(
             target=self.droid_beacon.start_loop,
@@ -123,10 +131,12 @@ class BeaconManager:
         self.thread.start()
 
     def stop(self):
+        """Calls the low-level stop logic and ensures the management thread is cleared"""
         self.droid_beacon.stop()
         if self.thread and self.thread.is_alive():
             self.thread.join(timeout=0.1)
 
     @property
     def current_active(self):
+        """Returns the name of the currently active broadcast for UI display"""
         return self.droid_beacon.current_active

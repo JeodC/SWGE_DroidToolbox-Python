@@ -162,7 +162,6 @@ AUDIO_GROUPS = {
 UI_STRINGS = {
     "LIST_ITEM": "[{idx}] {label} MAC: {mac}",
     "UNKNOWN": "Unknown Droid",
-    "ADDED": "[*] Added to Favorites",
     "INVALID": "Invalid Selection",
     
     "MAIN_HEADER": " --- DROID TOOLBOX ---",
@@ -180,14 +179,15 @@ UI_STRINGS = {
     "FAVORITES_HEADER": "--- KNOWN DROIDS ---",
     "FAVORITES_EMPTY": "No droids saved yet",
     "FAVORITES_PROMPT": "Select a Favorite",
-    "FAVORITES_DELCONF": "[*] {name} removed",
+    "FAVORITES_DELCONF": "Removed from Favorites",
+    "FAVORITES_SAVED": "Added to Favorites",
     
     "BEACON_HEADER_MAIN": "--- DROID BEACON CONTROL ---",
     "BEACON_HEADER_LOCATIONS": "--- LOCATION BEACONS ---",
     "BEACON_HEADER_DROIDS": "--- {faction} DROIDS ---",
     "BEACON_FOOTER": "Active: {status}",
     
-    "CONN_CONNECTING": "[*] Connecting to {name}...",
+    "CONN_CONNECTING": "Connecting to {name}...",
     "CONN_FAILED": "Failed to connect",
     "CONN_LOST": "Connection lost. Returning to menu...",
     "CONN_DISCONNECTED": "Disconnected...",
@@ -220,4 +220,5 @@ UI_BUTTONS = {
     "FAV":    {"label": "Favorite", "btn": "Y",  "color_ref": "y"},
     "EXIT":   {"label": "Exit",     "btn": "B",  "color_ref": "b"},
     "CONN":   {"label": "Connect",  "btn": "A",  "color_ref": "a"},
+    "SCAN":   {"label": "Scan",     "btn": "X",  "color_ref": "x"},
 }

@@ -20,7 +20,7 @@ _log_fd = None
 # ----------------------------------------------------------------------
 # Logging setup
 # ----------------------------------------------------------------------
-def initialise_logging() -> None:
+def initialize_logging() -> None:
     global _log_fd
     log_dir = os.path.join(BASE_PATH, "logs")
     os.makedirs(log_dir, exist_ok=True)
@@ -65,7 +65,7 @@ def cleanup(toolbox, exit_code: int) -> None:
 def main() -> None:
     from toolbox import DroidToolbox
 
-    initialise_logging()
+    initialize_logging()
 
     # SDL initialization
     if sdl2.SDL_Init(sdl2.SDL_INIT_VIDEO | sdl2.SDL_INIT_GAMECONTROLLER) < 0:

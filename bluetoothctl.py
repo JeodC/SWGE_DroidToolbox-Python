@@ -44,7 +44,6 @@ class BluetoothCtl:
         )
         self._reader_thread.start()
 
-        # One-time initialization sequence
         self._send("power on")
         self._send("agent NoInputNoOutput")
         self._send("default-agent")
@@ -73,7 +72,7 @@ class BluetoothCtl:
         try:
             if not self.proc or self.proc.poll() is not None:
                 return False
-            output = self.get_info("")  # empty string lists adapter info
+            output = self.get_info("")
             return "Powered: yes" in output
         except BluetoothCtlError:
             return False
@@ -127,13 +126,10 @@ class BluetoothCtl:
     def power_on(self):
         """Ensure the adapter is powered. Retry once if needed."""
         try:
-            # Send power on command anyway
             print("[BT] Ensuring Bluetooth is powered on...")
-            self._send("power on")
-            
-            # Optionally wait a short moment and verify
+            self._send("power on") 
             time.sleep(0.1)
-            output = self.get_info("")  # adapter info
+            output = self.get_info("")
             if "Powered: yes" not in output:
                 print("[BT] Adapter still not powered, retrying...")
                 self._send("power on")
@@ -146,28 +142,28 @@ class BluetoothCtl:
     def stop_scanning(self):
         self._send("scan off")
 
-    def get_info(self, mac: str, timeout: float = 0.8) -> str:
-        """ Fetches device info while filtering out background noise """
+    def get_info(self, mac: str, timeout: float = 1.0) -> str:
         mac = mac.upper()
         self._send(f"info {mac}", delay=0.0)
     
         end = time.monotonic() + timeout
         output = []
-        
-        # We look for specific headers that bluetoothctl uses in the 'info' command
-        markers = ["Device", "Name", "Alias", "Paired", "Connected", "ManufacturerData"]
+        found_data = False
     
         while time.monotonic() < end:
             try:
-                # Short timeout on queue.get to keep the loop responsive
-                line = self._queue.get(timeout=0.05)
+                line = self._queue.get(timeout=0.1)
+                output.append(line)
                 
-                # Logic: If the line contains the MAC or common info headers, keep it
-                if mac in line.upper() or any(m in line for m in markers):
-                    output.append(line)
+                # Specifically look for the end of the data block we need
+                if "ManufacturerData" in line or "ServiceData" in line:
+                    found_data = True
                     
             except queue.Empty:
-                if output: # If we already started getting data and it stopped, we're likely done
+                # If we haven't seen any data yet, keep waiting. 
+                # If we already have some data, give it one last short wait for trailing lines.
+                if found_data:
+                    time.sleep(0.1)
                     break
                 continue
     
@@ -181,16 +177,11 @@ class BluetoothCtl:
         if payload == self.current_mfg_payload:
             return
     
-        # Stop current broadcast if any
         self._send("advertise off", delay=0.1)
-        
-        # Set new data
         self._send("menu advertise")
         self._send("clear")
         self._send(f"manufacturer {mfg_id} {mfg_data}")
         self._send("back")
-        
-        # Resume
         self._send("advertise on")
         self.current_mfg_payload = payload
 

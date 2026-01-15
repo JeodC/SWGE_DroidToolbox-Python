@@ -42,11 +42,13 @@ class Input:
     }
 
     def __new__(cls):
+        """Implements the Singleton pattern to ensure only one input manager exists."""
         if not cls._instance:
             cls._instance = super(Input, cls).__new__(cls)
         return cls._instance
 
     def __init__(self) -> None:
+        """Initializes SDL subsystems, thread locks, and internal state containers."""
         if hasattr(self, "_initialized"):
             return
 
@@ -72,6 +74,7 @@ class Input:
         self._open_available_controllers()
 
     def _open_available_controllers(self) -> None:
+        """Scans for and opens all connected game controllers compatible with SDL."""
         num_controllers = sdl2.SDL_NumJoysticks()
         for i in range(num_controllers):
             if sdl2.SDL_IsGameController(i):
@@ -82,6 +85,7 @@ class Input:
                     print(f"Controller Connected: {name}")
 
     def _load_controller_mappings(self) -> None:
+        """Loads community-standard controller layout strings from environment or file."""
         config_path = sdl2.SDL_getenv(b"SDL_GAMECONTROLLERCONFIG")
         if config_path:
             config_str = config_path.decode("utf-8")
@@ -91,6 +95,7 @@ class Input:
                 sdl2.SDL_GameControllerAddMappingsFromFile(config_str.encode("utf-8"))
 
     def _add_input_event(self, key_name: str) -> None:
+        """Updates internal sets to mark a key as pressed and held, recording the start time."""
         with self._input_lock:
             if key_name not in self._keys_held:
                 self._keys_held_start_time[key_name] = time.time()
@@ -98,6 +103,7 @@ class Input:
             self._keys_held.add(key_name)
 
     def _remove_input_event(self, key_name: str) -> None:
+        """Cleans up internal state when a key is released."""
         with self._input_lock:
             self._keys_held.discard(key_name)
             self._keys_held_start_time.pop(key_name, None)
@@ -169,10 +175,12 @@ class Input:
         return False
 
     def clear_ui_states(self) -> None:
+        """Flushes the 'pressed' state buffer to prevent accidental double-inputs on menu changes."""
         with self._input_lock:
             self._keys_pressed.clear()
 
     def cleanup(self) -> None:
+        """Safely closes all controller handles and shuts down the SDL joystick subsystem."""
         with self._input_lock:
             for c in self.controllers:
                 sdl2.SDL_GameControllerClose(c)
