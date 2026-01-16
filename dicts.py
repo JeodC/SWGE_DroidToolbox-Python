@@ -140,14 +140,42 @@ COMMANDS = {
 # DROID CONTROLS
 # - Physical droid remotes have Fwd/Back, L/R, Head L/R, Sound, and Accessory buttons
 # - These are mimicked here, where the intent is mapped to both a button and the method that handles the backend
-# - This also allows for custom buttonn mapping
-CONTROLS = {
-    "THROTTLE":  {"btn": "LY", "method": "remote_throttle"},
-    "STEER":     {"btn": "RX", "method": "remote_steer"},
-    "HEAD":      {"btn": "RY", "method": "remote_head"},
-    "SOUND":     {"btn": "A",  "method": "remote_sound_random"},
-    "STOP":      {"btn": "X",  "method": "remote_stop"},
-    "ACCESSORY": {"btn": "R1", "method": "remote_accessory"},
+# - Favorite droids can be assigned a controller profile
+CONTROLLER_PROFILES = {
+    # --- R-SERIES ---
+    "R_Tank": {  # Classic tank-style
+        "THROTTLE_L":  {"btn": "LY", "method": "remote_throttle_left"},  # left leg
+        "THROTTLE_R":  {"btn": "RY", "method": "remote_throttle_right"}, # right leg
+        "HEAD":        {"btn": "RX", "method": "remote_head"},            # right stick
+        "SOUND":       {"btn": "A",  "method": "remote_sound_random"},
+        "STOP":        {"btn": "X",  "method": "remote_stop"},
+        "ACCESSORY":   {"btn": "R1", "method": "remote_accessory"},
+    },
+    "R_Racing": {  # Arcade / racing style
+        "THROTTLE":    {"btn": "LY", "method": "remote_throttle"},       # forward/back + left/right
+        "HEAD":        {"btn": "L2/R2", "method": "remote_head"},        # triggers for head rotation
+        "SOUND":       {"btn": "A",  "method": "remote_sound_random"},
+        "STOP":        {"btn": "X",  "method": "remote_stop"},
+        "ACCESSORY":   {"btn": "R1", "method": "remote_accessory"},
+    },
+
+    # --- BB-SERIES ---
+    "BB_Default": {  # Default holonomic control
+        "THROTTLE":    {"btn": "LY", "method": "remote_throttle"},       # forward/back
+        "STEER":       {"btn": "LX", "method": "remote_steer"},          # left/right
+        "HEAD":        {"btn": "RX", "method": "remote_head"},           # head rotation
+        "SOUND":       {"btn": "A",  "method": "remote_sound_random"},
+        "STOP":        {"btn": "X",  "method": "remote_stop"},
+        "ACCESSORY":   {"btn": "R1", "method": "remote_accessory"},
+    },
+    "BB_Alt": {      # Alternative BB layout
+        "THROTTLE":    {"btn": "LY", "method": "remote_throttle"},
+        "STEER":       {"btn": "RX", "method": "remote_steer"},
+        "HEAD":        {"btn": "RY", "method": "remote_head"},
+        "SOUND":       {"btn": "B",  "method": "remote_sound_random"},  # change button mapping
+        "STOP":        {"btn": "X",  "method": "remote_stop"},
+        "ACCESSORY":   {"btn": "R2", "method": "remote_accessory"},
+    }
 }
 
 # DROID AUDIO GROUPS
@@ -186,12 +214,11 @@ UI_STRINGS = {
     "MAIN_EXIT": "Quit Application",
 
     "OPTIONS_HEADER": " --- SETTINGS MENU ---",
-    "OPTIONS_THEME": "Change UI theme",
+    "OPTIONS_THEME": "Change UI Theme",
     "OPTIONS_FAVORITES": "Manage Favorites",
-    "OPTIONS_MAPPINGS": "Change gamepad profiles", 
+    "OPTIONS_MAPPINGS": "Change Gamepad Profiles", 
     
     "SCAN_HEADER": "--- DROID SCANNER ---",
-    "SCAN_FOOTER": "Found droids.",
     "SCAN_MSG": "Scanning for Droids...",
     "SCAN_NONE": "No Droids found",
     "SCAN_PROMPT": "Select a Droid",
@@ -239,6 +266,82 @@ UI_BUTTONS = {
     "DELETE": {"label": "Delete",   "btn": "X",  "color_ref": "x"},
     "FAV":    {"label": "Favorite", "btn": "Y",  "color_ref": "y"},
     "EXIT":   {"label": "Exit",     "btn": "B",  "color_ref": "b"},
-    "CONN":   {"label": "Connect",  "btn": "A",  "color_ref": "a"},
     "SCAN":   {"label": "Scan",     "btn": "X",  "color_ref": "x"},
+}
+
+# COLOR THEMES
+# These are selected in options
+UI_THEMES = {
+    "SCOUNDREL": {
+        "btn_a": (150, 120, 85, 255),
+        "btn_b": (70, 80, 95, 255),
+        "btn_x": (95, 105, 115, 255),
+        "btn_y": (175, 155, 110, 255),
+        "btn_s": (40, 40, 40, 255),
+        "row_bg": (44, 46, 48, 255),
+        "header_bg": (18, 18, 18, 255),
+        "footer_bg": (38, 38, 38, 255),
+        "progress_bar": (185, 145, 60, 255),
+        "text": (230, 225, 215, 255),
+    },
+    "RESISTANCE": {
+        "btn_a": (210, 80, 30, 255),
+        "btn_b": (140, 35, 30, 255),
+        "btn_x": (90, 85, 80, 255),
+        "btn_y": (175, 145, 60, 255),
+        "btn_s": (40, 35, 35, 255),
+        "row_bg": (55, 45, 40, 255),
+        "header_bg": (25, 22, 20, 255),
+        "footer_bg": (45, 40, 38, 255),
+        "progress_bar": (210, 80, 30, 255),
+        "text": (235, 230, 215, 255),
+    },
+    "FIRST ORDER": {
+        "btn_a": (125, 130, 135, 255),
+        "btn_b": (20, 20, 20, 255),
+        "btn_x": (120, 125, 130, 255),
+        "btn_y": (90, 95, 100, 255),
+        "btn_s": (15, 15, 15, 255),
+        "row_bg": (22, 24, 26, 255),
+        "header_bg": (40, 42, 45, 255),
+        "footer_bg": (40, 42, 45, 255),
+        "progress_bar": (160, 0, 0, 255),
+        "text": (200, 200, 200, 255),
+    },
+    "ARTOO": {
+        "btn_a": (10, 40, 90, 255),
+        "btn_b": (60, 65, 75, 255),
+        "btn_x": (110, 70, 45, 255),
+        "btn_y": (140, 20, 25, 255),
+        "btn_s": (40, 40, 50, 255),
+        "row_bg": (120, 125, 130, 255),
+        "header_bg": (10, 40, 90, 255),
+        "footer_bg": (10, 40, 90, 255),
+        "progress_bar": (10, 40, 90, 255),
+        "text": (255, 255, 255, 255),
+    },
+    "JEDI": {
+        "btn_a": (70, 130, 95, 255),
+        "btn_b": (60, 80, 110, 255),
+        "btn_x": (120, 120, 120, 255),
+        "btn_y": (180, 180, 140, 255),
+        "btn_s": (45, 50, 45, 255),
+        "row_bg": (50, 50, 47, 255),
+        "header_bg": (28, 32, 30, 255),
+        "footer_bg": (34, 38, 36, 255),
+        "progress_bar": (70, 160, 110, 255),
+        "text": (235, 240, 230, 255),
+    },
+    "SITH": {
+        "btn_a": (180, 60, 60, 255),
+        "btn_b": (140, 50, 50, 255),
+        "btn_x": (100, 80, 80, 255),
+        "btn_y": (160, 120, 100, 255),
+        "btn_s": (50, 40, 40, 255),
+        "row_bg": (35, 25, 25, 255),
+        "header_bg": (50, 38, 38, 255),
+        "footer_bg": (55, 45, 45, 255),
+        "progress_bar": (200, 80, 80, 255),
+        "text": (240, 235, 230, 255),
+    },
 }

@@ -30,7 +30,8 @@ from dicts import (
     DROIDS,
     AUDIO_GROUPS,
     UI_STRINGS,
-    UI_BUTTONS
+    UI_BUTTONS,
+    UI_THEMES
 )
 
 # ----------------------------------------------------------------------
@@ -41,18 +42,15 @@ class DroidToolbox:
         self.input = Input()
         self.ui = UserInterface()
         self.bt = BluetoothCtl()
-        self.favorites_path = os.path.join(os.path.dirname(__file__), ".favorites")
-        self.favorites = {}
         self._lock = threading.Lock()
-        self._load_favorites()
 
         # Managers
+        self.options_mgr = OptionsManager(self.ui)
         self.scan_mgr = ScanManager(
-            self.bt, lock=self._lock, favorites=self.favorites, progress_callback=self._show_progress
+            self.bt, lock=self._lock, favorites=self.options_mgr.get_favorites_dict(), progress_callback=self._show_progress
         )
         self.beacon_mgr = BeaconManager(self.bt)
         self.conn_mgr = ConnectionManager()
-        self.options_mgr = OptionsManager(self.ui)
 
         # Menu Map
         self.view_map = {
@@ -89,6 +87,10 @@ class DroidToolbox:
         self.last_progress_time = 0.0
         self.PROGRESS_STICKY_SECONDS = 2.0
 
+        # Apply theme
+        current_theme = self.options_mgr.get_theme()
+        self.ui.apply_theme(current_theme)
+
     # ----------------------------------------------------------------------
     # Helpers
     # ----------------------------------------------------------------------
@@ -111,41 +113,6 @@ class DroidToolbox:
                     "label": cfg["label"],
                     "color": color_map.get(cfg["color_ref"], self.ui.c_text)
                 })
-
-    def _load_favorites(self):
-        """ Loads favorites from file and populates the FAVORITES dict """
-        with self._lock:
-            if os.path.exists(self.favorites_path):
-                try:
-                    with open(self.favorites_path, "r") as f:
-                        for line in f:
-                            if "|" in line:
-                                mac, name = line.strip().split("|", 1)
-                                self.favorites[mac.upper()] = name
-                except Exception as e:
-                    print(f"[FAVORITES] Error: {e}")
-
-    def _write_favorites(self):
-        """ Writes to favorites file """
-        def _io_task():
-            with self._lock:
-                try:
-                    with open(self.favorites_path, "w") as f:
-                        for mac, name in self.favorites.items():
-                            f.write(f"{mac}|{name}\n")
-                except Exception as e:
-                    print(f"[FAVORITES] IO Error: {e}")
-        threading.Thread(target=_io_task, daemon=True, name="FavoritesIOThread").start()
-
-    def save_favorite(self, mac, name):
-        with self._lock:
-            self.favorites[mac.upper()] = name
-            self._write_favorites()
-
-    def delete_favorite(self, mac):
-        with self._lock:
-            self.favorites.pop(mac.upper(), None)
-            self._write_favorites()
 
     def _reset_bluetooth_adapter(self):
         self.scan_mgr.stop_scan()
@@ -196,35 +163,50 @@ class DroidToolbox:
         self.last_progress_msg = msg
         self.last_progress_time = time.time()
 
-    def _render_menu_list(self, items: list, current_idx: int, start_y: int = 60, scroll_limit: int = 12, show_details: bool = True):
-        if not items: return 0
+    def _render_menu_list(self, items: list, current_idx: int, start_y: int = 60, scroll_limit: int = 12):
+        """
+        Render a vertical list of menu items.
+
+        Supports:
+          - Plain strings
+          - Tuples (mac, data) for favorites
+          - Automatically highlights the selected index
+        """
+        if not items:
+            return 0
+
+        # Clamp the current index
         current_idx = max(0, min(current_idx, len(items) - 1))
+
+        # Determine scroll window
         start_view = max(0, current_idx - (scroll_limit - 1))
-        
+
         for i, item in enumerate(items[start_view:start_view + scroll_limit]):
             actual_idx = start_view + i
             sel = (actual_idx == current_idx)
             y_pos = start_y + i * 30
-            
-            if isinstance(item, dict):
-                mac = item.get("mac", "").upper()
-                # Prioritize saved nickname, then the parsed identity from get_droid_identity
-                display_name = item.get("nickname") or item.get("identity") or "Droid"
-                label = f"{display_name} - {mac}" if show_details else display_name
-            elif isinstance(item, tuple):
-                label = f"{item[1]} - {item[0].upper()}" if show_details else item[1]
+
+            if isinstance(item, tuple):
+                # Favorite: (mac, data)
+                mac, data = item
+                display_name = data.get("nickname") or data.get("personality") or "Droid"
+                # Controller profile name (from options)
+                profile_name = data.get("controller_profile", "R_Tank")
+                label = f"{display_name} - Controller Profile: {profile_name}"
             else:
+                # Plain string
                 label = str(item)
 
+            # Draw the row
             self.ui.row_list(
-                label, 
-                (20, y_pos), 
-                self.ui.screen_width // 2, 
-                28, 
-                sel, 
-                color=self.ui.c_text if sel else self.ui.c_menu_bg
+                label,
+                (20, y_pos),
+                self.ui.screen_width // 2,
+                28,
+                sel,
+                color=self.ui.c_text if sel else self.ui.c_header_bg
             )
-            
+
         return start_view
         
     def _get_active_status(self, default_msg: str) -> str:
@@ -277,43 +259,76 @@ class DroidToolbox:
         if not self.options_selection:
             header = UI_STRINGS["OPTIONS_HEADER"]
             items = [UI_STRINGS["OPTIONS_THEME"], UI_STRINGS["OPTIONS_FAVORITES"], UI_STRINGS["OPTIONS_MAPPINGS"]]
+            category = None  # define it so the rest of the code can check safely
         else:
             category = self.options_selection[0]
             header = f"--- {category.upper()} ---"
-
-            # Placeholder for submenus
             if category == UI_STRINGS["OPTIONS_THEME"]:
-                items = ["Not implemented"]
-            elif category == UI_STRINGS["OPTIONS_FAVORITES"]:
-                items = ["Not implemented"]
+                items = list(UI_THEMES.keys())
             else:
-                items = ["Not implemented"]
-    
+                items = self.options_mgr.get_favorites_list() or []
+
         self.ui.draw_header(header)
         status = self._get_active_status(UI_STRINGS["MAIN_FOOTER"])
         self.ui.draw_status_footer(status)
         
         self._render_menu_list(items, self.options_idx)
-        self._set_buttons("SELECT", "BACK")
+
+        # Set buttons depending on the category
+        if category == UI_STRINGS["OPTIONS_FAVORITES"]:
+            # Favorites management: Select = edit, X = delete, B = back
+            self._set_buttons("SELECT", "BACK", "DELETE")
+        else:
+            self._set_buttons("SELECT", "BACK")
+        
         self.ui.draw_buttons()
         self._options_items_cache = items
 
     def _update_options(self):
         items = getattr(self, "_options_items_cache", [])
-        if not items: return
-    
+        if not items:
+            return
+
         # Navigation
         self.options_idx = self.input.ui_handle_navigation(self.options_idx, 1, len(items))
-    
-        # Selection
+
+        # Selection / actions
         if self.input.ui_key("A"):
             selected = items[self.options_idx]
             if not self.options_selection:
+                # Enter submenu
                 self.options_selection.append(selected)
                 self.options_idx = 0
             else:
-                pass # Handle option actions
-    
+                category = self.options_selection[0]
+
+                if category == UI_STRINGS["OPTIONS_THEME"]:
+                    # Switch the current UI theme
+                    self.options_mgr.set_theme(selected)
+                    self.ui.apply_theme(selected)
+
+                elif category == UI_STRINGS["OPTIONS_FAVORITES"]:
+                    # Edit nickname
+                    pass
+
+                elif category == UI_STRINGS["OPTIONS_MAPPINGS"]:
+                    # Edit controller profile
+                    pass
+
+        # Delete favorite
+        elif self.input.ui_key("X"):
+            if self.options_selection and self.options_selection[0] == UI_STRINGS["OPTIONS_FAVORITES"]:
+                selected = items[self.options_idx]
+                if isinstance(selected, tuple):
+                    mac, data = selected
+                    self.options_mgr.delete_favorite(mac)
+                    self._show_progress(UI_STRINGS["FAVORITES_DELCONF"])
+                    # Update items and clamp index
+                    items = self.options_mgr.get_favorites_list() or []
+                    self._options_items_cache = items
+                    self.options_idx = max(0, min(self.options_idx, len(items) - 1))
+
+        # Back
         elif self.input.ui_key("B"):
             if self.options_selection:
                 self.options_selection.pop()
@@ -340,38 +355,37 @@ class DroidToolbox:
 
         if items:
             self.idx = min(self.idx, len(items) - 1)
-            self._render_menu_list(items, self.idx, show_details=True)
+            self._render_menu_list(items, self.idx)
 
         self._set_buttons("CONN", "FAV", "SCAN", "BACK")
         self.ui.draw_buttons()
 
     def _update_scan(self):
         items = self.scan_mgr.get_results()
-        if items:
+        selected = items[self.idx] if items else None
+
+        if selected:
             self.idx = self.input.ui_handle_navigation(self.idx, 1, len(items))
-            selected = items[self.idx]
-        else:
-            selected = None
-
-        if self.input.ui_key("Y") and selected:
             mac = selected["mac"]
-            name = selected.get("identity") or selected.get("nickname") or "Droid"
-            
-            if mac.upper() in self.favorites:
-                self.delete_favorite(mac)
-                self._show_progress(UI_STRINGS["FAVORITES_DELCONF"])
-            else:
-                self.save_favorite(mac, name)
-                self._show_progress(UI_STRINGS["FAVORITES_SAVED"])
+            nickname = selected.get("nickname") or selected.get("identity") or "Droid"
+            personality = selected.get("personality", "Default")
+            controller_profile = selected.get("controller_profile")
 
-        elif self.input.ui_key("X"):
+            if self.input.ui_key("Y"):
+                if self.options_mgr.has_favorite(mac):
+                    self.options_mgr.delete_favorite(mac)
+                    self._show_progress(UI_STRINGS["FAVORITES_DELCONF"])
+                else:
+                    self.options_mgr.save_favorite(mac, nickname, personality, controller_profile)
+                    self._show_progress(UI_STRINGS["FAVORITES_SAVED"])
+
+            elif self.input.ui_key("A"):
+                self.conn_mgr.connect_droid(mac, nickname)
+                self._show_progress(UI_STRINGS["CONN_CONNECTING"].format(name=nickname))
+
+        if self.input.ui_key("X"):
             self.scan_mgr.start_scan()
             self._show_progress(UI_STRINGS["SCAN_MSG"])
-
-        elif self.input.ui_key("A") and selected:
-            name = selected.get("nickname") or selected.get("identity") or "Droid"
-            self.conn_mgr.connect_droid(selected["mac"], name)
-            self._show_progress(UI_STRINGS["CONN_CONNECTING"].format(name=name))
 
         elif self.input.ui_key("B"):
             self._reset_to_main()
@@ -442,54 +456,65 @@ class DroidToolbox:
     # ----------------------------------------------------------------------
     # Connect Menu (Select a Favorite)
     # ----------------------------------------------------------------------
-    def _render_connect(self):
+    def _render_connect(self, on_select=None):
+        """
+        Renders the favorites list. 
+        on_select: callable(mac:str, data:dict) -> None
+                   Called when user presses A on a favorite.
+                   Defaults to connecting to droid.
+        """
         self.ui.draw_header(UI_STRINGS["MAIN_CONNECT"])
-        with self._lock:
-            fav_items = list(self.favorites.items())
+
+        fav_items = self.options_mgr.get_favorites_list()
 
         if not fav_items:
             status_msg = UI_STRINGS["FAVORITES_EMPTY"]
         else:
             status_msg = UI_STRINGS["FAVORITES_PROMPT"]
-            self._render_menu_list(fav_items, self.connect_idx, show_details=False)
+            self._render_menu_list(
+                fav_items, 
+                self.connect_idx
+            )
 
-        # Apply the priority helper
         status = self._get_active_status(status_msg)
         self.ui.draw_status_footer(status)
 
-        self._set_buttons("CONN", "BACK", "DELETE")
+        # Buttons
+        self._set_buttons("SELECT", "BACK", "DELETE")
         self.ui.draw_buttons()
+        self._connect_items_cache = fav_items
+        self._connect_select_callback = on_select
 
     def _update_connect(self):
-        if self.input.ui_key("B"):
-            self._reset_to_main()
+        fav_items = getattr(self, "_connect_items_cache", [])
+
+        if not fav_items or self.conn_mgr.is_connecting:
             return
 
-        with self._lock:
-            fav_items = list(self.favorites.items())
-        
-        if not fav_items or self.conn_mgr.is_connecting: 
-            return
+        self.connect_idx = min(self.connect_idx, len(fav_items)-1)
+        mac, data = fav_items[self.connect_idx]
 
-        self.connect_idx = self.input.ui_handle_navigation(self.connect_idx, 1, len(fav_items))
-        
-        # Guard against index errors if the list changed
-        self.connect_idx = max(0, min(self.connect_idx, len(fav_items) - 1))
-        mac, name = fav_items[self.connect_idx]
-
+        # Delete favorite
         if self.input.ui_key("X"):
-            self.delete_favorite(mac)
-            # Update index immediately so the next render doesn't crash
-            if len(fav_items) <= 1:
-                self.connect_idx = 0
-            else:
-                self.connect_idx = max(0, self.connect_idx - 1)
-                
+            self.options_mgr.delete_favorite(mac)
+            self.connect_idx = max(0, self.connect_idx - 1)
             self._show_progress(UI_STRINGS["FAVORITES_DELCONF"])
-            
+            return
+
+        # Select favorite
         elif self.input.ui_key("A"):
-            self.conn_mgr.connect_droid(mac, name)
-            self._show_progress(UI_STRINGS["CONN_CONNECTING"].format(name=name))
+            callback = getattr(self, "_connect_select_callback", None)
+            if callback:
+                callback(mac, data)
+            else:
+                # Default behavior: connect
+                self.conn_mgr.connect_droid(mac, data.get("nickname", "Droid"))
+                self._show_progress(UI_STRINGS["CONN_CONNECTING"].format(name=data.get("nickname", "Droid")))
+            return
+
+        # Back
+        elif self.input.ui_key("B"):
+            self._reset_to_main()
 
     # ----------------------------------------------------------------------
     # Connected Menu (Connected to Droid)

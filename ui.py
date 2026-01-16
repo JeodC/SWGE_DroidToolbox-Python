@@ -3,16 +3,18 @@
 ui.py - The User Interface
 """
 
+import collections
 import ctypes
 import os
 import time
 from itertools import cycle
 from typing import List, Optional, Tuple, Any
-import collections
 
 import sdl2
 import sdl2.sdlttf as ttf
 import sdl2.sdlimage as img
+
+from dicts import UI_THEMES
 
 FONT_PATH = os.path.join(os.getcwd(), "fonts", "romm.ttf")
 FONT_SIZE = 12
@@ -28,19 +30,8 @@ class UserInterface:
     screen_width = 640
     screen_height = 480
 
-    def __init__(self):
-        self.c_btn_a = sdl2.SDL_Color(47, 132, 62, 255)
-        self.c_btn_b = sdl2.SDL_Color(173, 60, 60, 255)
-        self.c_btn_x = sdl2.SDL_Color(59, 128, 170, 255)
-        self.c_btn_y = sdl2.SDL_Color(211, 185, 72, 255)
-        self.c_btn_s = sdl2.SDL_Color(56, 56, 56, 255)
-        
-        self.c_row_bg = sdl2.SDL_Color(56, 56, 56, 255)
-        self.c_menu_bg = sdl2.SDL_Color(20, 20, 20, 255)
-        self.c_footer_bg = sdl2.SDL_Color(51, 51, 51, 255)
-        self.c_progress_bar = sdl2.SDL_Color(0, 180, 0, 255)
-        self.c_text = sdl2.SDL_Color(255, 255, 255, 255)
-        self.c_row_sel = self.c_btn_a
+    def __init__(self, theme_name="ARTOO"):
+        self.apply_theme(theme_name)
 
         # Track what this instance initialized so cleanup is safe
         self._inited_sdl_video = False
@@ -420,9 +411,15 @@ class UserInterface:
         if color is None:
             color = self.c_text
             
-        self.draw_rectangle((0, 0, self.screen_width, HEADER_HEIGHT), fill=self.c_menu_bg)
+        self.draw_rectangle((0, 0, self.screen_width, HEADER_HEIGHT), fill=self.c_header_bg)
         self.draw_text((self.screen_width // 2 - self.get_text_width(title)//2, 8), title, color)
 
+    def apply_theme(self, theme_name):
+        theme = UI_THEMES.get(theme_name, UI_THEMES["ARTOO"])
+        for key, rgba in theme.items():
+            setattr(self, f"c_{key}", sdl2.SDL_Color(*rgba))
+        
+        self.c_row_sel = self.c_btn_a
     # ------------------------------------------------------------------
     # Image loading with LRU cache
     # ------------------------------------------------------------------
