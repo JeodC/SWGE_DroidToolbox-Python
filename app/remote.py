@@ -14,6 +14,16 @@ class RemoteControl:
         self.conn_mgr = conn_mgr
         self.state = {}
 
+    def stop_all(self):
+        self.conn_mgr.remote_throttle_left(0.0)
+        self.conn_mgr.remote_throttle_right(0.0)
+        self.conn_mgr.remote_head(0.0)
+        
+        self.conn_mgr.bb_drive(0x00, 0x00)
+        self.conn_mgr.bb_rotate(0x00, 0x00)
+        
+        self.state = {}
+
     def process(self, profile_name, input_mgr):
         profile = CONTROLLER_PROFILES.get(profile_name)
         if not profile:
@@ -51,13 +61,21 @@ class RemoteControl:
             t = intents.get("THROTTLE", 0.0)
             s = intents.get("STEER", 0.0)
             h = intents.get("HEAD", 0.0)
-            tl = intents.get("THROTTLE_L", t)
-            tr = intents.get("THROTTLE_R", t)
+            
+            tl = intents.get("THROTTLE_L")
+            tr = intents.get("THROTTLE_R")
 
-            self._update_motor("LEFT", tl + s)
-            self._update_motor("RIGHT", tr - s)
+            if tl is not None or tr is not None:
+                left_speed = tl if tl is not None else t
+                right_speed = tr if tr is not None else t
+            else:
+                left_speed = t + s
+                right_speed = t - s
+
+            self._update_motor("LEFT", left_speed)
+            self._update_motor("RIGHT", right_speed)
             self._update_motor("HEAD", h)
-
+            
         elif profile_name.startswith("BB-"):
             drive = intents.get("THROTTLE", 0.0)
             head = intents.get("HEAD", 0.0)
@@ -98,15 +116,18 @@ class RemoteControl:
         
     def _update_motor(self, key, speed):
         last_spd = self.state.get(f"LAST_{key}", 0.0)
-        if abs(speed - last_spd) > 0.05 or (speed == 0 and last_spd != 0):
-            safe_speed = max(-1.0, min(1.0, speed))
+        safe_speed = max(-1.0, min(1.0, speed))
+        
+        should_update = (abs(safe_speed - last_spd) > 0.05) or (safe_speed == 0.0 and last_spd != 0.0)
+
+        if should_update:
             if key == "LEFT":
                 self.conn_mgr.remote_throttle_left(safe_speed)
             elif key == "RIGHT":
                 self.conn_mgr.remote_throttle_right(safe_speed)
             elif key == "HEAD":
                 self.conn_mgr.remote_head(safe_speed)
-            self.state[f"LAST_{key}"] = speed
+            self.state[f"LAST_{key}"] = safe_speed
 
     def get_hints(self, profile_name):
         profile = CONTROLLER_PROFILES.get(profile_name, {})

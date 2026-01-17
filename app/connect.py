@@ -127,7 +127,12 @@ class ConnectionManager:
         stop_event = asyncio.Event()
 
         def handle_disconnect(_):
-            print(f"[BLE] {name} disconnected.")
+            print(f"[BLE] {name} disconnected. Resetting remote state.")
+            
+            # Clean slate
+            if self.remote_control:
+                self.remote_control.stop_all()
+            
             loop.call_soon_threadsafe(stop_event.set)
 
         async def run_connection():
@@ -151,7 +156,9 @@ class ConnectionManager:
             loop.run_until_complete(run_connection())
         finally:
             self.is_connecting = False
+            # Hard stop packets for safety if still physically connected
             if self.conn.client and self.conn.client.is_connected:
+                loop.run_until_complete(self._emergency_stop_packets())
                 loop.run_until_complete(self.conn.disconnect())
             loop.close()
 
