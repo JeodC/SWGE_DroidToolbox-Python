@@ -108,7 +108,7 @@ COMMANDS = {
     # --- SYSTEM & CONNECTION ---
     "LOGON":           [0x22, 0x20, 0x01, 0x42],
     "PAIRING_LED":     [0x23, 0x00, 0x02, 0x41], # Append 0x01 (On) or 0x00 (Off)
-    "AUDIO_BASE":      [0x27, 0x42, 0x0F, 0x44, 0x44, 0x00], # Append GG, CC (GrouipID, ClipID)
+    "AUDIO_BASE":      [0x27, 0x42, 0x0F, 0x44, 0x44, 0x00], # Append GG, CC (GroupID, ClipID)
 
     # --- R-SERIES ---
     # Direct Motor Control (Command 0x05), used for raw arcade-style steering
